@@ -1,0 +1,37 @@
+- name: Create temporary directory for all templates
+  tempfile:
+    state: directory
+  register: temp_file_path
+
+- name: Mirror directory structure
+  file:
+    path: "{{ temp_file_path.path }}/{{ item.path }}"
+    state: directory
+    mode: "{{ item.mode }}"
+  with_filetree: templates/alerting_rules/prod/
+  when: item.state == 'directory'
+  delegate_to: localhost
+
+- name: Setup templates
+  jsonnet:
+    src: "{{ item.src }}"
+    dest: "{{ temp_file_path.path }}/{{ item.path | regex_replace('^(.*)$', '\\1.yml')}}"
+    mode: "{{ item.mode }}"
+    format: yaml
+    include_dir: lib
+  vars:
+    custom_var_from_ansible: custom var from ansible!
+  with_filetree: templates/alerting_rules/prod/
+  when: item.state == 'file'
+  delegate_to: localhost
+
+- name: Sync these to the destination
+  synchronize:
+    src: "{{ temp_file_path.path }}/"
+    dest: "build"
+    delete: yes
+
+- name: Delete the temporary directory (optional)
+  file:
+    path: "{{ temp_file_path.path }}"
+    state: absent
